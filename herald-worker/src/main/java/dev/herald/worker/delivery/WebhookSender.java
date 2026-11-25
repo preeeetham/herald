@@ -8,6 +8,9 @@ import dev.herald.core.retry.RetryAfter;
 import dev.herald.core.signing.SigningSecret;
 import dev.herald.core.signing.WebhookSigner;
 import dev.herald.worker.config.WorkerProperties;
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -39,6 +42,8 @@ public class WebhookSender {
     private final Duration requestTimeout;
     private final int excerptBytes;
     private final String userAgent;
+    private final Tracer tracer;
+    private final Propagator propagator;
 
     WebhookSender(
             HttpClient webhookHttpClient,
@@ -47,7 +52,11 @@ public class WebhookSender {
             EndpointUrlGuard urlGuard,
             JsonMapper json,
             Clock clock,
+            Tracer tracer,
+            Propagator propagator,
             WorkerProperties properties) {
+        this.tracer = tracer;
+        this.propagator = propagator;
         this.http = webhookHttpClient;
         this.signer = signer;
         this.cipher = cipher;
@@ -80,8 +89,9 @@ public class WebhookSender {
                 .header(WebhookSigner.HEADER_TIMESTAMP, Long.toString(timestamp))
                 .header(WebhookSigner.HEADER_SIGNATURE, signer.signatureHeader(secrets(job, started), msgId, timestamp, body))
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-        if (job.traceParent() != null) {
-            request.header("traceparent", job.traceParent());
+        TraceContext trace = tracer.currentTraceContext().context();
+        if (trace != null) {
+            propagator.inject(trace, request, HttpRequest.Builder::header);
         }
 
         try {

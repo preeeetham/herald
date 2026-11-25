@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: herald
+    folder: Herald
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
