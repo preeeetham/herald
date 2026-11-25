@@ -18,3 +18,18 @@ docker compose -f deploy/docker-compose.yml up --build
 - Java 25, 4-space indent, final classes for value types, records for DTOs.
 - No framework code in `herald-core`.
 - SQL lives in repositories; schema changes only via new Flyway migrations.
+
+## Secrets policy
+- **Never commit secrets.** Real values (admin token, encryption key, DB
+  passwords, AWS credentials) come from environment variables, Kubernetes
+  Secrets or AWS Secrets Manager. Committed config only holds placeholders.
+- Enable the pre-push hook once per clone — it runs
+  [gitleaks](https://github.com/gitleaks/gitleaks) on every commit you push and
+  blocks the push on a finding:
+  ```bash
+  brew install gitleaks
+  git config core.hooksPath .githooks
+  ```
+- CI re-scans the full history on every push and PR.
+- Test fixtures that intentionally contain public test vectors must carry an
+  inline `gitleaks:allow` comment.

@@ -1,0 +1,2 @@
+# Public Standard Webhooks specification test vector (not a credential), committed before inline allow.
+170c4d520f726c305aa2e87940f9a7a339ab30e5:herald-core/src/test/java/dev/herald/core/signing/WebhookSignerTest.java:generic-api-key:22
