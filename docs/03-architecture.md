@@ -138,9 +138,15 @@ FOR UPDATE SKIP LOCKED;
 1. Long-poll SQS (10 messages, 20 s wait). Messages carry `MessageGroupId =
    tenantId` so SQS **fair queues** keep a noisy tenant's backlog from inflating
    others' dwell time (layer 2).
-2. Claim: `UPDATE delivery SET status='DELIVERING' WHERE id=? AND status='QUEUED'`.
-   Zero rows → duplicate message → ack and drop. If the dispatcher's transaction
-   is still open, the row lock makes this statement wait, then succeed.
+2. Claim: `UPDATE delivery SET status='DELIVERING' WHERE id=? AND (status='QUEUED'
+   OR (status='PENDING' AND next_attempt_at <= now()))`. Zero rows → duplicate or
+   stale message → ack and drop.
+   *Why PENDING too:* SQS can deliver the message before the dispatcher commits.
+   Under READ COMMITTED the consumer's snapshot still shows `PENDING`; a plain
+   `status='QUEUED'` predicate would filter the row out **without waiting** for
+   the dispatcher's lock and strand the delivery until the sweeper runs. Matching
+   a due `PENDING` row makes the UPDATE block on the row lock and re-evaluate the
+   committed `QUEUED` version. (Found by the integration suite.)
 3. Acquire the tenant's **bulkhead** permit (layer 3). Full → defer 1 s.
 4. Check the endpoint's **circuit breaker** (layer 4). Open → defer until half-open.
 5. Resolve the host, reject private / link-local addresses (SSRF), sign, POST with

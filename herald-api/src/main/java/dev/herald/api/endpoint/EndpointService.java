@@ -3,6 +3,7 @@ package dev.herald.api.endpoint;
 import dev.herald.api.config.HeraldProperties;
 import dev.herald.api.web.BadRequestException;
 import dev.herald.api.web.NotFoundException;
+import dev.herald.core.crypto.EndpointSecrets;
 import dev.herald.core.crypto.SecretCipher;
 import dev.herald.core.event.EventTypes;
 import dev.herald.core.id.Ids;
@@ -50,7 +51,7 @@ public class EndpointService {
         Instant now = clock.instant();
         Endpoint endpoint = new Endpoint(
                 id, tenantId, urlGuard.validate(url).toString(), description, normalise(eventTypes), EndpointStatus.ENABLED,
-                cipher.encrypt(secret.encoded(), Endpoint.secretAad(tenantId, id)), null, null, now, now);
+                cipher.encrypt(secret.encoded(), EndpointSecrets.associatedData(tenantId, id)), null, null, now, now);
         repository.insert(endpoint);
         return new WithSecret(endpoint, secret.encoded());
     }
@@ -90,7 +91,7 @@ public class EndpointService {
 
     public String revealSecret(UUID tenantId, UUID id) {
         Endpoint endpoint = get(tenantId, id);
-        return cipher.decrypt(endpoint.secretCiphertext(), Endpoint.secretAad(tenantId, id));
+        return cipher.decrypt(endpoint.secretCiphertext(), EndpointSecrets.associatedData(tenantId, id));
     }
 
     /**
@@ -104,7 +105,7 @@ public class EndpointService {
         Instant now = clock.instant();
         Endpoint rotated = new Endpoint(
                 id, tenantId, current.url(), current.description(), current.eventTypes(), current.status(),
-                cipher.encrypt(next.encoded(), Endpoint.secretAad(tenantId, id)),
+                cipher.encrypt(next.encoded(), EndpointSecrets.associatedData(tenantId, id)),
                 current.secretCiphertext(),
                 now.plus(ROTATION_OVERLAP),
                 current.createdAt(),
