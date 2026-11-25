@@ -29,3 +29,42 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+# Secrets have no defaults on purpose; see deploy/.env.example for local development.
+herald:
+  secrets:
+    encryption-key: ${HERALD_ENCRYPTION_KEY}
+  queue:
+    name: ${HERALD_QUEUE_NAME:herald-deliveries}
+    region: ${AWS_REGION:ap-south-1}
+    endpoint: ${HERALD_SQS_ENDPOINT:}
+    fair-queues: ${HERALD_FAIR_QUEUES:true}
+    create-if-missing: ${HERALD_CREATE_QUEUE:false}
+    consumers: 4
+    visibility-timeout: 60s
+    wait-time: 20s
+  dispatch:
+    interval: 250ms
+    batch-size: 200
+    per-tenant-limit: 50
+  delivery:
+    max-in-flight: 256
+    connect-timeout: 3s
+    request-timeout: 10s
+    response-excerpt-bytes: 1024
+    allow-private-networks: ${HERALD_ALLOW_PRIVATE_NETWORKS:false}
+    user-agent: Herald-Webhooks/0.1 (+https://github.com/preeeetham/herald)
+  retry:
+    schedule: 5s,30s,2m,10m,30m,1h,3h,6h
+    jitter: 0.2
+    max-retry-after: 1h
+  isolation:
+    replicas: ${HERALD_WORKER_REPLICAS:1}
+    bulkhead-deferral: 1s
+    circuit-window-size: 20
+    circuit-minimum-calls: 10
+    circuit-failure-rate-percent: 50
+    circuit-open-duration: 30s
+  sweeper:
+    interval: 30s
+    lease: 10m

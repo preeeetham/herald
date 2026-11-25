@@ -21,9 +21,4 @@ public record Endpoint(
     public boolean subscribesTo(String eventType) {
         return status == EndpointStatus.ENABLED && EventTypes.matchesAny(eventTypes, eventType);
     }
-
-    /** Associated data binding the encrypted secret to this endpoint and tenant. */
-    static String secretAad(UUID tenantId, UUID endpointId) {
-        return tenantId + ":" + endpointId;
-    }
 }
