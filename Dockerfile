@@ -17,13 +17,13 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q -pl ${MODULE} -am package -Dsk
  && java -Djarmode=tools -jar ${MODULE}/target/${MODULE}-*.jar extract --layers --launcher --destination /extracted
 
 FROM eclipse-temurin:25-jre-alpine
-RUN addgroup -S herald && adduser -S -G herald herald
+RUN addgroup -S -g 10001 herald && adduser -S -u 10001 -G herald herald
 WORKDIR /app
 # Layers ordered from least to most frequently changing for better image caching.
 COPY --from=build /extracted/dependencies/ ./
 COPY --from=build /extracted/spring-boot-loader/ ./
 COPY --from=build /extracted/snapshot-dependencies/ ./
 COPY --from=build /extracted/application/ ./
-USER herald
+USER 10001:10001
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]

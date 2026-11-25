@@ -1,0 +1,10 @@
+apiVersion: v2
+name: herald
+description: Multi-tenant, reliable event delivery — API, delivery workers and dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/preeeetham/herald
+sources:
+  - https://github.com/preeeetham/herald
+keywords: [webhooks, events, multi-tenant, sqs]

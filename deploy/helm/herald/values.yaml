@@ -1,0 +1,104 @@
+# Default values for Herald. Override per environment (see values-kind.yaml, values-aws.yaml).
+
+image:
+  registry: ghcr.io/preeeetham
+  tag: ""            # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+
+# Secrets are never stored in values. Reference a Secret created out of band
+# (External Secrets Operator from AWS Secrets Manager in production).
+# Required keys: HERALD_ADMIN_TOKEN, HERALD_ENCRYPTION_KEY, HERALD_DB_PASSWORD
+existingSecret: herald-secrets
+
+config:
+  database:
+    url: jdbc:postgresql://postgres:5432/herald
+    user: herald
+  redis:
+    host: redis
+    port: 6379
+    tls: false
+  sqs:
+    queueName: herald-deliveries
+    region: ap-south-1
+    endpoint: ""          # set only for ElasticMQ / non-AWS
+    createIfMissing: false
+    fairQueues: true
+  allowPrivateNetworks: false
+  requireHttps: true
+  corsOrigins: ""
+  tracing:
+    enabled: false
+    otlpEndpoint: ""
+    sampling: "0.1"
+  extraEnv: []
+
+serviceAccount:
+  create: true
+  name: herald
+  # IRSA: the worker needs sqs:SendMessage/ReceiveMessage/DeleteMessage (see deploy/terraform/iam.tf)
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 768Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  service:
+    port: 8080
+
+worker:
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 768Mi }
+  # Scales on SQS queue depth with KEDA (https://keda.sh). Requires KEDA in the cluster.
+  keda:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 20
+    messagesPerReplica: "200"
+    queueUrl: ""              # https://sqs.<region>.amazonaws.com/<account>/herald-deliveries
+    awsRegion: ap-south-1
+    identityOwner: operator   # KEDA uses its own IRSA role to read queue metrics
+
+dashboard:
+  enabled: true
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  service:
+    port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    api: api.herald.example.com
+    dashboard: console.herald.example.com
+  tls: []
+
+podDisruptionBudget:
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false   # requires the Prometheus Operator

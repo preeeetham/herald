@@ -24,4 +24,4 @@ npm install
 HERALD_API_URL=http://localhost:8080 npm run dev   # with the stack from deploy/docker-compose.yml
 ```
 
-`npm run lint`, `npx tsc --noEmit` and `npm run build` run in CI.
+`npm run lint`, `npm run typecheck` and `npm run build` run in CI.
