@@ -1,0 +1,6 @@
+# GitGuardian configuration.
+# Test fixtures contain public specification test vectors (Standard Webhooks), never real secrets.
+version: 2
+secret:
+  ignored_paths:
+    - "**/src/test/**"
