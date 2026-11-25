@@ -31,3 +31,24 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Secrets have no defaults on purpose: they must come from the environment
+# (Kubernetes Secret / AWS Secrets Manager). See deploy/.env.example for local dev.
+herald:
+  admin-token: ${HERALD_ADMIN_TOKEN}
+  secrets:
+    encryption-key: ${HERALD_ENCRYPTION_KEY}
+  endpoints:
+    allow-private-networks: ${HERALD_ALLOW_PRIVATE_NETWORKS:false}
+    require-https: ${HERALD_REQUIRE_HTTPS:true}
+    max-per-tenant: 100
+  tenant-defaults:
+    rate-limit-per-second: 50
+    rate-limit-burst: 100
+    max-concurrency: 20
+  cors:
+    allowed-origins: ${HERALD_CORS_ORIGINS:http://localhost:3000}
