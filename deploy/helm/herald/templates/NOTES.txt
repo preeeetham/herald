@@ -1,0 +1,10 @@
+Herald {{ .Chart.AppVersion }} is deployed as release "{{ .Release.Name }}".
+
+API:        kubectl port-forward svc/{{ include "herald.fullname" . }}-api 8080:{{ .Values.api.service.port }}
+{{- if .Values.dashboard.enabled }}
+Dashboard:  kubectl port-forward svc/{{ include "herald.fullname" . }}-dashboard 3000:{{ .Values.dashboard.service.port }}
+{{- end }}
+
+Onboard a tenant with the admin token stored in Secret "{{ .Values.existingSecret }}":
+  curl -X POST localhost:8080/admin/v1/tenants -H "Authorization: Bearer $ADMIN_TOKEN" \
+    -H 'Content-Type: application/json' -d '{"slug":"acme","name":"Acme Insurance"}'

@@ -1,0 +1,46 @@
+{{- if .Values.dashboard.enabled }}
+{{- $component := dict "root" . "component" "dashboard" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "herald.fullname" . }}-dashboard
+  labels: {{- include "herald.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels: {{- include "herald.selector" $component | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "herald.selector" $component | nindent 8 }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: dashboard
+          image: {{ include "herald.image" (dict "root" . "name" "dashboard") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - name: HERALD_API_URL
+              value: http://{{ include "herald.fullname" . }}-api:{{ .Values.api.service.port }}
+          readinessProbe:
+            httpGet: { path: /login, port: http }
+          livenessProbe:
+            httpGet: { path: /login, port: http }
+            periodSeconds: 15
+          resources: {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "herald.fullname" . }}-dashboard
+  labels: {{- include "herald.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "herald.selector" $component | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.dashboard.service.port }}, targetPort: http }
+{{- end }}

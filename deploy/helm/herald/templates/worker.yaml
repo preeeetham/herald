@@ -1,0 +1,94 @@
+{{- $component := dict "root" . "component" "worker" -}}
+{{- $replicas := ternary .Values.worker.keda.minReplicas .Values.worker.replicas .Values.worker.keda.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "herald.fullname" . }}-worker
+  labels: {{- include "herald.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.worker.keda.enabled }}
+  replicas: {{ .Values.worker.replicas }}
+  {{- end }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "herald.selector" $component | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "herald.selector" $component | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8081"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Pollers stop first, then in-flight deliveries drain (up to 20 s); anything left is recovered by the sweeper.
+      terminationGracePeriodSeconds: 45
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "herald.selector" $component | nindent 14 }}
+      containers:
+        - name: worker
+          image: {{ include "herald.image" (dict "root" . "name" "worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8081 }
+          envFrom:
+            - secretRef: { name: {{ .Values.existingSecret }} }
+          env:
+            {{- include "herald.commonEnv" . | nindent 12 }}
+            - name: HERALD_QUEUE_NAME
+              value: {{ .Values.config.sqs.queueName | quote }}
+            - name: AWS_REGION
+              value: {{ .Values.config.sqs.region | quote }}
+            - name: HERALD_SQS_ENDPOINT
+              value: {{ .Values.config.sqs.endpoint | quote }}
+            - name: HERALD_CREATE_QUEUE
+              value: {{ .Values.config.sqs.createIfMissing | quote }}
+            - name: HERALD_FAIR_QUEUES
+              value: {{ .Values.config.sqs.fairQueues | quote }}
+            # Per-tenant concurrency is divided across replicas (ADR-0004).
+            - name: HERALD_WORKER_REPLICAS
+              value: {{ $replicas | quote }}
+          {{- include "herald.probes" . | nindent 10 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "herald.fullname" . }}-worker
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "herald.selector" $component | nindent 6 }}
+{{- if .Values.worker.keda.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "herald.fullname" . }}-worker
+  labels: {{- include "herald.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "herald.fullname" . }}-worker
+  minReplicaCount: {{ .Values.worker.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.keda.maxReplicas }}
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: {{ required "worker.keda.queueUrl is required when KEDA is enabled" .Values.worker.keda.queueUrl | quote }}
+        queueLength: {{ .Values.worker.keda.messagesPerReplica | quote }}
+        awsRegion: {{ .Values.worker.keda.awsRegion | quote }}
+        identityOwner: {{ .Values.worker.keda.identityOwner | quote }}
+{{- end }}

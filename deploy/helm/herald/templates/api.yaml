@@ -1,0 +1,95 @@
+{{- $component := dict "root" . "component" "api" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "herald.fullname" . }}-api
+  labels: {{- include "herald.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "herald.selector" $component | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "herald.selector" $component | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "herald.selector" $component | nindent 14 }}
+      containers:
+        - name: api
+          image: {{ include "herald.image" (dict "root" . "name" "api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - secretRef: { name: {{ .Values.existingSecret }} }
+          env:
+            {{- include "herald.commonEnv" . | nindent 12 }}
+            - name: HERALD_REDIS_HOST
+              value: {{ .Values.config.redis.host | quote }}
+            - name: HERALD_REDIS_PORT
+              value: {{ .Values.config.redis.port | quote }}
+            - name: HERALD_REDIS_TLS
+              value: {{ .Values.config.redis.tls | quote }}
+            - name: HERALD_REQUIRE_HTTPS
+              value: {{ .Values.config.requireHttps | quote }}
+            - name: HERALD_CORS_ORIGINS
+              value: {{ .Values.config.corsOrigins | quote }}
+          {{- include "herald.probes" . | nindent 10 }}
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "herald.fullname" . }}-api
+  labels: {{- include "herald.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "herald.selector" $component | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.api.service.port }}, targetPort: http }
+{{- if .Values.api.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "herald.fullname" . }}-api
+  labels: {{- include "herald.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "herald.fullname" . }}-api }
+  minReplicas: {{ .Values.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.api.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: {{ .Values.api.autoscaling.targetCPUUtilizationPercentage }} }
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "herald.fullname" . }}-api
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "herald.selector" $component | nindent 6 }}

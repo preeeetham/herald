@@ -14,11 +14,11 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
-RUN addgroup -S herald && adduser -S -G herald herald
-COPY --from=build --chown=herald:herald /app/.next/standalone ./
-COPY --from=build --chown=herald:herald /app/.next/static ./.next/static
-COPY --from=build --chown=herald:herald /app/public ./public
-USER herald
+RUN addgroup -S -g 10001 herald && adduser -S -u 10001 -G herald herald
+COPY --from=build --chown=10001:10001 /app/.next/standalone ./
+COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
+COPY --from=build --chown=10001:10001 /app/public ./public
+USER 10001:10001
 EXPOSE 3000
 # HERALD_API_URL is read at runtime by the /api/herald proxy route.
 CMD ["node", "server.js"]

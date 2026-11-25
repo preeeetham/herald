@@ -1,0 +1,23 @@
+# Production-style values for EKS. Endpoints come from `terraform output`.
+config:
+  database:
+    url: jdbc:postgresql://<rds-endpoint>:5432/herald
+  redis: { host: <elasticache-primary-endpoint>, tls: true }
+  sqs: { region: ap-south-1, fairQueues: true }
+  corsOrigins: https://console.herald.example.com
+  tracing: { enabled: true, otlpEndpoint: http://otel-collector.observability:4318/v1/traces, sampling: "0.1" }
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: <worker-irsa-role-arn>
+worker:
+  keda:
+    enabled: true
+    queueUrl: <sqs-queue-url>
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: <acm-certificate-arn>

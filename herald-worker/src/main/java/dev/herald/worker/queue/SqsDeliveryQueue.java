@@ -28,12 +28,31 @@ class SqsDeliveryQueue implements DeliveryQueue {
 
     private final SqsClient sqs;
     private final boolean fairQueues;
-    private final String queueUrl;
+    private final WorkerProperties.Queue config;
+    private volatile String queueUrl;
 
     SqsDeliveryQueue(SqsClient sqs, WorkerProperties properties) {
         this.sqs = sqs;
         this.fairQueues = properties.queue().fairQueues();
-        this.queueUrl = resolveQueueUrl(sqs, properties.queue());
+        this.config = properties.queue();
+    }
+
+    /**
+     * Resolved on first use rather than at start-up, so a worker that boots before the queue is
+     * reachable keeps running and simply retries (the dispatcher rolls back, pollers back off)
+     * instead of crash-looping.
+     */
+    private String queueUrl() {
+        String url = queueUrl;
+        if (url == null) {
+            synchronized (this) {
+                if (queueUrl == null) {
+                    queueUrl = resolveQueueUrl(sqs, config);
+                }
+                url = queueUrl;
+            }
+        }
+        return url;
     }
 
     @Override
@@ -49,7 +68,7 @@ class SqsDeliveryQueue implements DeliveryQueue {
                 }
                 entries.add(entry.build());
             }
-            SendMessageBatchResponse response = sqs.sendMessageBatch(b -> b.queueUrl(queueUrl).entries(entries));
+            SendMessageBatchResponse response = sqs.sendMessageBatch(b -> b.queueUrl(queueUrl()).entries(entries));
             if (!response.failed().isEmpty()) {
                 // Throwing rolls back the dispatch transaction, so the rows stay PENDING and are retried.
                 throw new IllegalStateException("SQS rejected " + response.failed().size() + " message(s): " + response.failed().getFirst().message());
@@ -59,7 +78,7 @@ class SqsDeliveryQueue implements DeliveryQueue {
 
     @Override
     public List<Received> receive(int max, Duration wait) {
-        return sqs.receiveMessage(b -> b.queueUrl(queueUrl).maxNumberOfMessages(Math.min(max, SQS_BATCH_LIMIT)).waitTimeSeconds((int) wait.toSeconds()))
+        return sqs.receiveMessage(b -> b.queueUrl(queueUrl()).maxNumberOfMessages(Math.min(max, SQS_BATCH_LIMIT)).waitTimeSeconds((int) wait.toSeconds()))
                 .messages()
                 .stream()
                 .map(m -> new Received(UUID.fromString(m.body()), m.receiptHandle()))
@@ -68,7 +87,7 @@ class SqsDeliveryQueue implements DeliveryQueue {
 
     @Override
     public void acknowledge(Received message) {
-        sqs.deleteMessage(b -> b.queueUrl(queueUrl).receiptHandle(message.receipt()));
+        sqs.deleteMessage(b -> b.queueUrl(queueUrl()).receiptHandle(message.receipt()));
     }
 
     private static String resolveQueueUrl(SqsClient sqs, WorkerProperties.Queue queue) {

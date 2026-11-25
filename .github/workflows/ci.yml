@@ -57,5 +57,22 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npx tsc --noEmit
+      - run: npm run typecheck
       - run: npm run build
+
+  infrastructure:
+    name: Infrastructure · helm lint & terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+      - run: |
+          helm lint deploy/helm/herald
+          helm lint deploy/helm/herald -f deploy/helm/herald/values-kind.yaml
+          helm template herald deploy/helm/herald -f deploy/helm/herald/values-aws.yaml > /dev/null
+      - uses: hashicorp/setup-terraform@v4
+      - working-directory: deploy/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
