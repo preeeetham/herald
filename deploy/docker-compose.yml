@@ -67,6 +67,14 @@ services:
       api: { condition: service_healthy }   # the API owns the schema migrations
       sqs: { condition: service_started }
 
+  dashboard:
+    build: { context: ../dashboard }
+    environment:
+      HERALD_API_URL: http://api:8080
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+
   # Programmable webhook receiver for demos: /status/200, /status/503, /delay/3 ...
   receiver:
     image: mccutchen/go-httpbin:latest
