@@ -1,0 +1,79 @@
+package dev.herald.core.signing;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class WebhookSignerTest {
+
+    private static final String MSG_ID = "msg_p5jXN8AQM9LWM0D4loKWxJek";
+    private static final long TIMESTAMP = 1614265330L;
+    private static final String BODY = "{\"test\": 2432232314}";
+
+    private final WebhookSigner signer = new WebhookSigner();
+
+    @Test
+    void matchesStandardWebhooksReferenceVector() {
+        SigningSecret secret = SigningSecret.parse("whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw");
+
+        String header = signer.signatureHeader(List.of(secret), MSG_ID, TIMESTAMP, BODY);
+
+        assertThat(header).isEqualTo("v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=");
+    }
+
+    @Test
+    void verifiesItsOwnSignature() {
+        SigningSecret secret = SigningSecret.generate();
+        String header = signer.signatureHeader(List.of(secret), MSG_ID, TIMESTAMP, BODY);
+
+        boolean valid = signer.verify(secret, MSG_ID, Long.toString(TIMESTAMP), BODY, header, Instant.ofEpochSecond(TIMESTAMP + 60));
+
+        assertThat(valid).isTrue();
+    }
+
+    @Test
+    void rejectsTamperedBody() {
+        SigningSecret secret = SigningSecret.generate();
+        String header = signer.signatureHeader(List.of(secret), MSG_ID, TIMESTAMP, BODY);
+
+        assertThat(signer.verify(secret, MSG_ID, Long.toString(TIMESTAMP), BODY + " ", header, Instant.ofEpochSecond(TIMESTAMP)))
+                .isFalse();
+    }
+
+    @Test
+    void rejectsTimestampOutsideToleranceToPreventReplay() {
+        SigningSecret secret = SigningSecret.generate();
+        String header = signer.signatureHeader(List.of(secret), MSG_ID, TIMESTAMP, BODY);
+
+        assertThat(signer.verify(secret, MSG_ID, Long.toString(TIMESTAMP), BODY, header, Instant.ofEpochSecond(TIMESTAMP + 301)))
+                .isFalse();
+    }
+
+    @Test
+    void emitsOneSignaturePerSecretDuringRotation() {
+        SigningSecret current = SigningSecret.generate();
+        SigningSecret previous = SigningSecret.generate();
+
+        String header = signer.signatureHeader(List.of(current, previous), MSG_ID, TIMESTAMP, BODY);
+
+        assertThat(header.split(" ")).hasSize(2);
+        assertThat(signer.verify(previous, MSG_ID, Long.toString(TIMESTAMP), BODY, header, Instant.ofEpochSecond(TIMESTAMP)))
+                .isTrue();
+    }
+
+    @Test
+    void secretRoundTripsThroughWireFormatAndNeverPrintsKey() {
+        SigningSecret secret = SigningSecret.generate();
+
+        assertThat(SigningSecret.parse(secret.encoded())).isEqualTo(secret);
+        assertThat(secret.toString()).doesNotContain(secret.encoded());
+    }
+
+    @Test
+    void rejectsSecretWithoutPrefix() {
+        assertThatThrownBy(() -> SigningSecret.parse("abc")).isInstanceOf(IllegalArgumentException.class);
+    }
+}
