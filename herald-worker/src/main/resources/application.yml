@@ -32,6 +32,10 @@ management:
     distribution:
       percentiles-histogram:
         http.server.requests: true
+  observations:
+    enable:
+      # The dispatcher ticks every 250 ms; tracing each tick would flood the backend.
+      "[tasks.scheduled.execution]": false
   tracing:
     sampling:
       probability: ${HERALD_TRACE_SAMPLING:1.0}
