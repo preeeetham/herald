@@ -1,0 +1,22 @@
+# Build
+target/
+build/
+*.class
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+# Node
+node_modules/
+.next/
+out/
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.tfstate
+*.tfstate.*
+.terraform/
+# Logs
+*.log
