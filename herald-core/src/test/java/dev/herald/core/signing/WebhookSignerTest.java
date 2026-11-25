@@ -19,7 +19,7 @@ class WebhookSignerTest {
      * Public test vector from the Standard Webhooks specification — not a real credential. The
      * prefix is concatenated at runtime so secret scanners do not mistake it for a live key.
      */
-    private static final String SPEC_TEST_KEY = "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
+    private static final String SPEC_TEST_KEY = "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"; // gitleaks:allow
 
     @Test
     void matchesStandardWebhooksReferenceVector() {
