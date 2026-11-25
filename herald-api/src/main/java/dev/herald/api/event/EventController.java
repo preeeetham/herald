@@ -5,6 +5,9 @@ import dev.herald.api.delivery.DeliveryRepository;
 import dev.herald.api.security.TenantPrincipal;
 import dev.herald.api.web.BadRequestException;
 import dev.herald.api.web.Page;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,11 +48,13 @@ class EventController {
     private final EventService service;
     private final DeliveryRepository deliveries;
     private final JsonMapper json;
+    private final Tracer tracer;
 
-    EventController(EventService service, DeliveryRepository deliveries, JsonMapper json) {
+    EventController(EventService service, DeliveryRepository deliveries, JsonMapper json, Tracer tracer) {
         this.service = service;
         this.deliveries = deliveries;
         this.json = json;
+        this.tracer = tracer;
     }
 
     record PublishRequest(@NotBlank @Size(max = 128) String type, @NotNull JsonNode payload) {}
@@ -68,13 +73,12 @@ class EventController {
     ResponseEntity<PublishResponse> publish(
             @AuthenticationPrincipal TenantPrincipal tenant,
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) @Size(min = 1, max = 255) String idempotencyKey,
-            @RequestHeader(name = "traceparent", required = false) String traceParent,
             @Valid @RequestBody PublishRequest request) {
         if (!request.payload().isObject()) {
             throw new BadRequestException("payload must be a JSON object");
         }
         var published = service.publish(
-                tenant.tenantId(), request.type(), json.writeValueAsString(request.payload()), idempotencyKey, traceParent);
+                tenant.tenantId(), request.type(), json.writeValueAsString(request.payload()), idempotencyKey, currentTraceParent());
         var body = new PublishResponse(
                 published.event().id(), published.event().type(), published.deliveryCount(), published.event().createdAt());
         return published.replayed()
@@ -99,5 +103,18 @@ class EventController {
         Event event = service.get(tenant.tenantId(), id);
         return new EventDetailResponse(
                 event.id(), event.type(), json.readTree(event.payload()), event.createdAt(), deliveries.findByEvent(tenant.tenantId(), id));
+    }
+
+    /**
+     * W3C {@code traceparent} of the current server span. Stored with the event so the worker can
+     * continue the same trace across the queue hop, linking publish → deliver → receiver.
+     */
+    private String currentTraceParent() {
+        Span span = tracer.currentSpan();
+        if (span == null || span.isNoop()) {
+            return null;
+        }
+        TraceContext context = span.context();
+        return "00-" + context.traceId() + "-" + context.spanId() + (Boolean.TRUE.equals(context.sampled()) ? "-01" : "-00");
     }
 }

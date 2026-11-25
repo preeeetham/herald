@@ -11,6 +11,7 @@ import dev.herald.api.web.Page;
 import dev.herald.api.web.PayloadTooLargeException;
 import dev.herald.core.event.EventTypes;
 import dev.herald.core.id.Ids;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -30,12 +31,15 @@ public class EventService {
     private final EventRepository events;
     private final EndpointRepository endpoints;
     private final DeliveryRepository deliveries;
+    private final MeterRegistry meters;
     private final int maxPayloadBytes;
 
-    EventService(EventRepository events, EndpointRepository endpoints, DeliveryRepository deliveries, HeraldProperties properties) {
+    EventService(
+            EventRepository events, EndpointRepository endpoints, DeliveryRepository deliveries, MeterRegistry meters, HeraldProperties properties) {
         this.events = events;
         this.endpoints = endpoints;
         this.deliveries = deliveries;
+        this.meters = meters;
         this.maxPayloadBytes = properties.events().maxPayloadBytes();
     }
 
@@ -68,6 +72,8 @@ public class EventService {
                 .map(Endpoint::id)
                 .toList();
         deliveries.createPending(tenantId, event.id(), targets);
+        meters.counter("herald.events.ingested", "tenant", tenantId.toString()).increment();
+        meters.counter("herald.deliveries.created", "tenant", tenantId.toString()).increment(targets.size());
         return new Published(event, targets.size(), false);
     }
 

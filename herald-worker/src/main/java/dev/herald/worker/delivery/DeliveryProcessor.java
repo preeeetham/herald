@@ -6,9 +6,13 @@ import dev.herald.worker.isolation.EndpointCircuitBreakers;
 import dev.herald.worker.isolation.TenantBulkheads;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -35,6 +39,8 @@ public class DeliveryProcessor {
     private final MeterRegistry meters;
     private final Clock clock;
     private final Duration bulkheadDeferral;
+    private final Tracer tracer;
+    private final Propagator propagator;
 
     DeliveryProcessor(
             DeliveryStore store,
@@ -44,7 +50,11 @@ public class DeliveryProcessor {
             EndpointCircuitBreakers circuitBreakers,
             MeterRegistry meters,
             Clock clock,
+            Tracer tracer,
+            Propagator propagator,
             WorkerProperties properties) {
+        this.tracer = tracer;
+        this.propagator = propagator;
         this.store = store;
         this.sender = sender;
         this.retryPolicy = retryPolicy;
@@ -80,9 +90,38 @@ public class DeliveryProcessor {
                 defer(job, circuitBreakers.openDuration(), "circuit_open");
                 return;
             }
-            SendResult result = sender.send(job);
+            SendResult result = sendTraced(job);
             circuitBreakers.record(job.endpointId(), result);
             apply(job, result);
+        }
+    }
+
+    /**
+     * Continues the trace started when the event was published, so one trace shows publish → queue
+     * → delivery → receiver. The sender propagates this span's context to the receiver.
+     */
+    private SendResult sendTraced(DeliveryJob job) {
+        Span span = (job.traceParent() == null
+                        ? tracer.spanBuilder()
+                        : propagator.extract(Map.of("traceparent", job.traceParent()), Map::get))
+                .name("herald.deliver")
+                .kind(Span.Kind.CLIENT)
+                .tag("herald.tenant_id", job.tenantId().toString())
+                .tag("herald.delivery_id", job.deliveryId().toString())
+                .tag("herald.event_type", job.eventType())
+                .tag("herald.attempt", Integer.toString(job.attemptCount() + 1))
+                .start();
+        try (Tracer.SpanInScope scope = tracer.withSpan(span)) {
+            SendResult result = sender.send(job);
+            if (result.statusCode() != null) {
+                span.tag("http.response.status_code", Integer.toString(result.statusCode()));
+            }
+            if (!result.succeeded()) {
+                span.error(new IllegalStateException(result.error()));
+            }
+            return result;
+        } finally {
+            span.end();
         }
     }
 
