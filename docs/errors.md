@@ -19,3 +19,7 @@ One or more fields failed validation. `errors` maps each field to a message.
 
 ## rate-limited
 The tenant exceeded its ingestion rate. Wait for `Retry-After` seconds.
+
+## payload-too-large
+The serialised event payload exceeds the configured limit (256 KiB by default).
+Send a reference (e.g. an object-store URL) instead of very large documents.

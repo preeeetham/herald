@@ -50,5 +50,7 @@ herald:
     rate-limit-per-second: 50
     rate-limit-burst: 100
     max-concurrency: 20
+  events:
+    max-payload-bytes: 262144
   cors:
     allowed-origins: ${HERALD_CORS_ORIGINS:http://localhost:3000}

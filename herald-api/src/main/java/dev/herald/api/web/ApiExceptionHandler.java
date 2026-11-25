@@ -31,6 +31,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "conflict", e.getMessage());
     }
 
+    @ExceptionHandler(PayloadTooLargeException.class)
+    ProblemDetail payloadTooLarge(PayloadTooLargeException e) {
+        return problem(HttpStatus.CONTENT_TOO_LARGE, "payload-too-large", e.getMessage());
+    }
+
     @ExceptionHandler({BadRequestException.class, UnsafeUrlException.class})
     ProblemDetail badRequest(RuntimeException e) {
         return problem(HttpStatus.BAD_REQUEST, "invalid-request", e.getMessage());

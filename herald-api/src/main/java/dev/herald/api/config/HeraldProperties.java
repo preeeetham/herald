@@ -16,6 +16,7 @@ public record HeraldProperties(
         @Valid @NotNull Secrets secrets,
         @Valid @NotNull Endpoints endpoints,
         @Valid @NotNull TenantDefaults tenantDefaults,
+        @Valid @NotNull Events events,
         @Valid @NotNull Cors cors) {
 
     /** {@code encryptionKey} is a base64 AES-256 key, injected from a KMS-backed secret in production. */
@@ -24,6 +25,8 @@ public record HeraldProperties(
     public record Endpoints(boolean allowPrivateNetworks, boolean requireHttps, @Min(1) int maxPerTenant) {}
 
     public record TenantDefaults(@Min(1) int rateLimitPerSecond, @Min(1) int rateLimitBurst, @Min(1) int maxConcurrency) {}
+
+    public record Events(@Min(1024) int maxPayloadBytes) {}
 
     public record Cors(List<String> allowedOrigins) {}
 }
